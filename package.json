@@ -1,17 +1,52 @@
 {
   "name": "access-log-pii-redactor",
-  "version": "0.0.0",
-  "description": "Remove personal and sensitive values from exported access logs.",
+  "version": "0.1.0",
+  "description": "Stream an exported access log and redact the query parameters, headers, addresses and identifiers a policy declares, quarantining every record it cannot vouch for.",
   "type": "module",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test"
+    "lint": "node --check src/index.mjs && node --check src/text.mjs && node --check src/detectors.mjs && node --check src/address.mjs && node --check src/policy.mjs && node --check src/redact.mjs && node --check bin/access-log-pii-redactor.mjs && node --check test/support.mjs && node --check test/text.test.mjs && node --check test/detectors.test.mjs && node --check test/address.test.mjs && node --check test/policy.test.mjs && node --check test/redact.test.mjs && node --check test/quarantine.test.mjs && node --check test/leakage.test.mjs && node --check test/output.test.mjs && node --check test/limits.test.mjs && node --check test/confinement.test.mjs && node --check test/sanitisation.test.mjs && node --check test/ordering.test.mjs && node --check test/ordering-equivalence.test.mjs && node --check test/severity-table.test.mjs && node --check test/severity-exit.test.mjs && node --check test/severity-word.test.mjs && node --check test/incomplete.test.mjs && node --check test/cli.test.mjs && node --check test/examples.test.mjs && node --check test/no-network.test.mjs",
+    "test": "node --test",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include=src/**",
+    "example": "node bin/access-log-pii-redactor.mjs --root examples/clean",
+    "pack:check": "npm pack --dry-run",
+    "check": "npm run lint && npm test && npm run example && npm run pack:check"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/edilec/access-log-pii-redactor"
-  }
+    "url": "git+https://github.com/edilec/access-log-pii-redactor.git"
+  },
+  "bin": {
+    "access-log-pii-redactor": "./bin/access-log-pii-redactor.mjs"
+  },
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "examples",
+    "docs",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "access-log",
+    "pii",
+    "redaction",
+    "privacy",
+    "log-processing",
+    "gdpr",
+    "security",
+    "cli"
+  ],
+  "author": "Edilec Private Limited",
+  "bugs": {
+    "url": "https://github.com/edilec/access-log-pii-redactor/issues"
+  },
+  "homepage": "https://github.com/edilec/access-log-pii-redactor#readme"
 }
