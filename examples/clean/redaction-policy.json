@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1",
+  "description": "Edge access log export: request target, request headers, client address and the account fields the exporter carries.",
+  "urlFields": ["request.url"],
+  "queryParams": ["token", "email"],
+  "headerFields": ["request.headers"],
+  "headers": ["authorization", "cookie", "x-api-key"],
+  "addressFields": ["client.ip"],
+  "redactFields": ["user.email"],
+  "detectors": [
+    "aws-access-key-id",
+    "bearer-token",
+    "email-address",
+    "jwt",
+    "pan-digits",
+    "private-key-block"
+  ]
+}
