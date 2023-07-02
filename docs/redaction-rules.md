@@ -111,3 +111,31 @@ so a check around the call cannot fire while the call is running. That is why a
 policy cannot supply a pattern: the detector catalog is closed, its patterns are
 authored in `src/detectors.mjs` where their shape can be argued about, and the
 text handed to one is bounded by `maxValueLength` before the scan starts.
+
+## How these guards were measured
+
+Both guards were checked by breaking them and watching the suite, because a
+guard nobody has broken is a guard nobody has tested.
+
+**Severity.** Each of the 15 error rules was demoted to `warning` in a
+*coordinated* edit -- the frozen table in `src/index.mjs` and the catalog above
+together, which is what makes `test/severity-table.test.mjs` stay green -- and
+the full suite was run against it. All 15 demotions were caught: 0 survived.
+Seven of them are caught by the exit code itself flipping from 1 to 0; the other
+eight already exit 2 because they make the run `incomplete`, and are caught by
+the error count and the printed severity word.
+
+**Ordering.** Each of the 11 call sites that order anything was swapped, one at
+a time, to `new Intl.Collator('en').compare`, and the suite (less the source
+scan in `test/no-network.test.mjs`, which sees the substitution itself) was run
+against it. Seven sites failed at least one case. The four that did not are the
+ones whose values cannot move under collation, and
+`test/ordering-equivalence.test.mjs` proves each rather than leaving it as a
+gap:
+
+| Site | What it orders | Why a collator cannot change it |
+| --- | --- | --- |
+| the known-limit list in an error message | this package's 9 limit names | every ordered pair enumerated |
+| `compareFindings` rule id | the 20 rule ids, over `[a-z0-9-]` | every ordered pair enumerated |
+| `report.input.detectors` | the 6 detector names, over `[a-z-]` | every ordered pair enumerated |
+| `compareFindings` message | nothing | no two findings share file, line, pointer and rule id, so the comparison is never reached |
