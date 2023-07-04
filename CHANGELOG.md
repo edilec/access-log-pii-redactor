@@ -37,7 +37,8 @@ here.
 - `policy-target-never-seen`: a field, header or parameter the policy names that
   no record carried. A policy that matches nothing looks exactly like a log with
   nothing to redact, so the run says which is which -- and withholds the claim
-  entirely when it did not read the whole log.
+  entirely when it did not read the whole log, or when it quarantined a record
+  and so never looked inside one of the records the claim would be about.
 - A CLI with `--help`, `--version`, `--json`, explicit input and output paths
   and the three documented exit codes; the JSON report on stdout alone.
 - A SHA-256 of the policy and of the redacted stream in every report, so a

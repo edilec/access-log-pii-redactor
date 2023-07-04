@@ -69,7 +69,9 @@ What a pass means:
   of personal data: a detector that does not fire proves nothing, and a field
   the policy does not name is not redacted. The report names every policy target
   that no record carried, because a policy that matches nothing looks exactly
-  like a log with nothing to redact.
+  like a log with nothing to redact -- and withholds that entirely on a run that
+  stopped early or quarantined a record, because neither one looked at every
+  record it would be a claim about.
 
 Exit codes:
   0  every record was redacted and written

@@ -720,14 +720,25 @@ export async function redactAccessLog(options = {}) {
 
   /**
    * A policy target nothing ever matched, reported only for a run that read the
-   * whole log.
+   * whole log **and looked inside every record in it**.
    *
    * This is the conclusion the stream is responsible for: "no record carried
-   * this header" is a statement about every record, and a run that stopped
-   * early did not see every record. Withholding it is the honest move -- the
-   * run is already `incomplete` and says why.
+   * this header" is a statement about every record, so the run has to have seen
+   * every record to make it.
+   *
+   * `state.consumed` alone was not that. A quarantined record is counted and
+   * located, and then never inspected: a line over `maxLineBytes` is not
+   * parsed, a line that is not UTF-8 is not decoded, a line that is not JSON is
+   * not walked, and a record refused for depth or field count has its walk
+   * abandoned partway. A one-record log whose record carried all four targets
+   * produced four findings each saying no record carried them, as soon as any
+   * one of those limits quarantined it -- a claim on evidence the run did not
+   * obtain, and one that sends the operator to their policy when the thing to
+   * fix is the limit they set. The run already withholds this for a stream that
+   * stopped early, for exactly the same reason; a record that was read but not
+   * read *into* is the same gap one level down.
    */
-  if (state.consumed) {
+  if (state.consumed && state.quarantined === 0) {
     for (const target of policy.targets) {
       if (seen.has(target)) continue
       sink.add({

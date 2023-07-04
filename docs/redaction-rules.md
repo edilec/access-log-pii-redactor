@@ -47,7 +47,7 @@ is a remainder about which nothing at all is known, and that is what
 | `no-records-processed` | error | The log was read to the end and held no records. A `pass` here would be green on no evidence. |
 | `output-unwritable` | error | The destination could not be opened. No record was read. |
 | `path-escapes-root` | error | The log resolves outside `--root`, so it was refused unread. |
-| `policy-target-never-seen` | warning | The policy names a field, header or parameter that no record carried, so nothing was redacted on its account. |
+| `policy-target-never-seen` | warning | The policy names a field, header or parameter that no record carried, so nothing was redacted on its account. Emitted only by a run that read the whole log and quarantined nothing: a record it did not look inside is not evidence that the target is absent. |
 | `record-not-json` | error | A line did not parse. It was quarantined by line number, byte count and shape; no parser message is read and no content is reported. |
 | `record-not-object` | error | A line parsed as something other than an object, so no field could be matched against the policy. |
 | `record-not-utf8` | error | A line is not valid UTF-8. It was quarantined undecoded. |

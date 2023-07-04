@@ -138,6 +138,93 @@ test('a run that stopped early does not claim a policy target was never seen', a
   assert.deepEqual(raisedRules(missing), ['policy-target-never-seen'], 'read to the end, one target was not')
 })
 
+/**
+ * A record the run quarantined is a record the run did not read into.
+ *
+ * `policy-target-never-seen` says "no record in this log carried it", which is
+ * a claim about every record. A quarantined record is counted and located, and
+ * then never inspected: an over-long line is not parsed, a non-UTF-8 line is
+ * not decoded, a line that is not JSON is not walked, and a record refused for
+ * depth or field count has its walk abandoned partway. Each case below takes
+ * the SAME record -- one that demonstrably carries all four targets, proved by
+ * the control -- and has one limit quarantine it.
+ */
+const ALL_TARGETS = {
+  client: { ip: '203.0.113.9' },
+  request: { headers: { authorization: 'Bearer abcdefghijklmno' } },
+  user: { email: 'ada@example.invalid' },
+}
+
+const FOUR_TARGETS = policy({
+  addressFields: ['client.ip'],
+  headerFields: ['request.headers'],
+  headers: ['authorization'],
+  redactFields: ['user.email'],
+})
+
+const quarantining = [
+  ['a line over maxLineBytes', logOf([ALL_TARGETS]), { maxLineBytes: 40 }, 'record-too-large'],
+  ['a record over maxDepth', logOf([ALL_TARGETS]), { maxDepth: 1 }, 'record-too-deep'],
+  ['a record over maxFieldsPerRecord', logOf([ALL_TARGETS]), { maxFieldsPerRecord: 2 }, 'record-too-many-fields'],
+  ['a line that is not JSON', `${JSON.stringify(ALL_TARGETS).replace('{"client"', '{,"client"')}\n`, {}, 'record-not-json'],
+  ['bytes that are not UTF-8', new Uint8Array([...Buffer.from('{"a":"', 'utf8'), 0xff, 0xfe, ...Buffer.from('"}\n', 'utf8')]), {}, 'record-not-utf8'],
+]
+
+test('the control: read whole, this record carries all four targets and nothing is reported missing', async () => {
+  // Without this the cases below would pass just as well against a record that
+  // never carried the targets in the first place.
+  const report = await apiReport({ 'access.log': logOf([ALL_TARGETS]), 'redaction-policy.json': FOUR_TARGETS })
+
+  assert.equal(report.status, 'pass')
+  assert.equal(report.summary.quarantined, 0)
+  assert.equal(findingsFor(report, 'policy-target-never-seen').length, 0)
+})
+
+for (const [label, log, limits, expectedRule] of quarantining) {
+  test(`${label} does not let the run claim a policy target was never seen`, async () => {
+    const report = await apiReport({ 'access.log': log, 'redaction-policy.json': FOUR_TARGETS }, { limits })
+
+    assert.equal(report.summary.quarantined, 1, 'this case must really quarantine')
+    assert.ok(raisedRules(report).includes(expectedRule), `expected ${expectedRule}, got ${raisedRules(report)}`)
+    assert.deepEqual(
+      findingsFor(report, 'policy-target-never-seen').map((finding) => finding.message),
+      [],
+      'the run claimed no record carried a target it never looked for',
+    )
+  })
+}
+
+test('one quarantined record withholds the claim for the whole run, however many others were read', async () => {
+  // The claim is about every record, so one unread record is enough to void it
+  // -- the same reasoning the stream-level guard already applies to a run that
+  // stopped early, one level further down.
+  const report = await apiReport(
+    {
+      'access.log': `${logOf([ALL_TARGETS, ALL_TARGETS])}${JSON.stringify(ALL_TARGETS).replace('{"client"', '{,"client"')}\n`,
+      'redaction-policy.json': policy({ ...FOUR_TARGETS, queryParams: undefined, redactFields: ['user.email', 'never.here'] }),
+    },
+  )
+
+  assert.equal(report.summary.records, 3)
+  assert.equal(report.summary.quarantined, 1)
+  assert.equal(findingsFor(report, 'policy-target-never-seen').length, 0)
+})
+
+test('a clean run still names a target no record carried, so the claim was not simply deleted', async () => {
+  const report = await apiReport(
+    {
+      'access.log': logOf([ALL_TARGETS, ALL_TARGETS]),
+      'redaction-policy.json': policy({ ...FOUR_TARGETS, redactFields: ['user.email', 'never.here'] }),
+    },
+  )
+
+  assert.equal(report.summary.quarantined, 0)
+  assert.deepEqual(
+    findingsFor(report, 'policy-target-never-seen').map((finding) => finding.location.pointer),
+    ['/redactFields/never.here'],
+  )
+})
+
 test('no path through this tool reports pass without having read a record', async () => {
   const cases = [
     { inputs: { 'redaction-policy.json': fullPolicy() }, args: [] },

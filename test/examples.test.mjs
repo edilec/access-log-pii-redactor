@@ -59,16 +59,27 @@ test('the broken example completes and fails, with a verdict rather than a gap',
   assert.equal(report.status, 'fail')
   assert.deepEqual(raisedRules(report), [
     'address-unrecognised',
-    'policy-target-never-seen',
     'record-not-json',
     'record-not-object',
     'record-residual-identifier',
   ])
   assert.equal(report.summary.errors, 3)
-  assert.equal(report.summary.warnings, 2)
+  assert.equal(report.summary.warnings, 1)
   assert.equal(report.summary.records, 5)
   assert.equal(report.summary.written, 2)
   assert.equal(report.summary.quarantined, 3)
+})
+
+test('the broken example withholds the never-seen claim, because it quarantined three records', async () => {
+  // It used to make it: `queryParams:email` was reported as carried by no
+  // record in the log, on a run that never looked inside line 2, line 3 or
+  // line 5. The claim happened to be true of the lines it did read, which is
+  // exactly why it is not evidence -- and it sent the reader to their policy
+  // when the thing to fix was the exporter that wrote the doubled comma.
+  const { report } = await example('broken')
+
+  assert.equal(report.summary.quarantined, 3)
+  assert.equal(findingsFor(report, 'policy-target-never-seen').length, 0)
 })
 
 test('the broken example quarantines its malformed line without echoing a byte of it', async () => {
