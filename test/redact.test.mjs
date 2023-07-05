@@ -90,6 +90,43 @@ test('a record refused for depth or width throws rather than being partly redact
   assert.throws(() => run(wide, policy), (error) => error instanceof RecordRefused && error.ruleId === 'record-too-many-fields')
 })
 
+test('a refused record leaves the run\'s seen-set exactly as it found it', () => {
+  // `seen` is what the run uses to say a policy target exists in the log. A
+  // walk that is abandoned has looked at part of a record and nothing more, so
+  // what it reached before throwing is not evidence -- and leaving it behind
+  // made the answer depend on walk order: the same record marked
+  // `addressFields:client.ip` seen when maxFieldsPerRecord stopped it (the walk
+  // got that far) and did not when maxDepth stopped it (it did not).
+  const policy = compile({
+    addressFields: ['client.ip'],
+    headerFields: ['request.headers'],
+    headers: ['authorization'],
+    redactFields: ['user.email'],
+  })
+  const carriesEverything = {
+    client: { ip: '203.0.113.9' },
+    request: { headers: { authorization: 'Bearer abcdefghijklmno' } },
+    user: { email: CANARIES.email },
+  }
+
+  // The control: read whole, this record marks all four.
+  const whole = new Set()
+  redactRecord(carriesEverything, policy, DEFAULT_LIMITS, whole)
+  assert.deepEqual([...whole].sort(), [
+    'addressFields:client.ip',
+    'headerFields:request.headers',
+    'headers:authorization',
+    'redactFields:user.email',
+  ])
+
+  for (const limits of [{ ...DEFAULT_LIMITS, maxDepth: 1 }, { ...DEFAULT_LIMITS, maxFieldsPerRecord: 2 }]) {
+    const seen = new Set(['a-target-the-caller-already-had'])
+    assert.throws(() => redactRecord(carriesEverything, policy, limits, seen), RecordRefused)
+    assert.deepEqual([...seen], ['a-target-the-caller-already-had'],
+      `a walk stopped by ${JSON.stringify(limits.maxDepth === 1 ? 'maxDepth' : 'maxFieldsPerRecord')} left marks behind`)
+  }
+})
+
 test('a key that would reach the prototype setter stays an ordinary field', () => {
   const policy = compile({ redactFields: ['a'] })
   const { value } = run(JSON.parse('{"__proto__":{"polluted":true},"a":"x"}'), policy)

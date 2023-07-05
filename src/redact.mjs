@@ -302,7 +302,22 @@ function walk(value, context, pointer, matchPath, notes, depth) {
  */
 export function redactRecord(record, policy, limits, seen) {
   const notes = []
-  const context = { policy, limits, seen, redactions: 0, fields: 0 }
+  /**
+   * Targets are marked in a set belonging to this record, and merged into the
+   * caller's only once the walk has finished.
+   *
+   * `seen` is the run's evidence that a policy target exists in the log, and a
+   * refused record is one the run never finished looking at. Marking straight
+   * into the caller's set left whatever the doomed walk reached before it threw
+   * -- so the same record answered "which targets does this log carry?"
+   * differently depending on which limit stopped it and how far it had got:
+   * `client.ip` counted as seen under maxFieldsPerRecord, because the walk
+   * reached it first, and did not under maxDepth, because it did not. Evidence
+   * from a walk that was abandoned is not evidence.
+   */
+  const marked = new Set()
+  const context = { policy, limits, seen: marked, redactions: 0, fields: 0 }
   const value = walk(record, context, '', '', notes, 0)
+  for (const target of marked) seen.add(target)
   return { value, redactions: context.redactions, notes, fields: context.fields }
 }
