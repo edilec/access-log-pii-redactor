@@ -18,6 +18,21 @@ import { apiReport, cliRun, files, findingsFor, fullPolicy, logOf, policy, raise
  * The distinction being defended: `fail` says "I read it and it is wrong",
  * `incomplete` says "I could not obtain the evidence". A consumer that treats
  * the second as the first ships a log it believes was redacted.
+ *
+ * The header sentence is a measurement, not an aspiration. `src/index.mjs` sets
+ * the flag in six places, and deleting any one of them turns this suite red:
+ * the log that could not be located kills 9, the file that is not a regular
+ * file 2, the log over `maxInputBytes` 4, the destination that could not be
+ * opened 3, the stream stopped by a run-level bound 9, and the log that held no
+ * records 3.
+ *
+ * It was not true before. A seventh site -- a `stat` on the log that threw
+ * after `realpath` had already succeeded -- survived deletion with the whole
+ * suite green, and it is reachable: the log being unlinked, or losing its
+ * permissions, in the window between the two calls. It is gone rather than
+ * merely tested, because `locate` now resolves and inspects in one step, so
+ * every way of failing to obtain the log leaves by the refusal the first case
+ * below drives.
  */
 
 test('a log that could not be resolved is incomplete, never a pass and never a plain failure', async () => {
@@ -241,4 +256,16 @@ test('no path through this tool reports pass without having read a record', asyn
       assert.equal(result.code, 2)
     }
   }
+})
+
+test('every place that marks a run incomplete has a case in this file', async () => {
+  // A structural guard, and openly that: the six sites are each killed by
+  // deletion, and this counts them so a seventh cannot arrive without somebody
+  // coming back here. It is the cheap half; the cases above are the real one.
+  const { readFile } = await import('node:fs/promises')
+  const source = await readFile(new URL('../src/index.mjs', import.meta.url), 'utf8')
+  const sites = source.split('state.incomplete = true').length - 1
+
+  assert.equal(sites, 6,
+    'src/index.mjs marks a run incomplete somewhere this file has no case for; add the case, then the count')
 })

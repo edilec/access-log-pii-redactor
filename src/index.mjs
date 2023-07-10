@@ -262,13 +262,29 @@ class FindingSink {
   }
 }
 
-/** Resolve one declared name inside the real root, refusing anything that leaves it. */
+/**
+ * Resolve one declared name inside the real root and inspect it, refusing
+ * anything that leaves the root.
+ *
+ * The `stat` belongs here rather than at the two call sites. Resolving a name
+ * and then inspecting it as two steps answers one question -- "can this run
+ * obtain this file?" -- in two places, and the second answer was a branch no
+ * test could reach: `realpath` succeeding and `stat` failing needs the file to
+ * be unlinked, or to lose its permissions, in the window between the two calls.
+ * An `incomplete` flag set only on a path nothing exercises is an `incomplete`
+ * flag that can be deleted with the whole suite still green, which is precisely
+ * how a tool in this catalog came to report a completed failure about a file it
+ * had never read. Asking once leaves one refusal for every way of not obtaining
+ * the file, and it is the refusal the tests already drive.
+ */
 async function locate(realRoot, name) {
   const target = resolve(realRoot, name)
   try {
     const real = await realpath(target)
     if (!isInside(realRoot, real)) return { ok: false, reason: 'escapes' }
-    return { ok: true, real }
+    // Inside the same `try`: a `stat` that throws here is one more way of not
+    // obtaining the file, and it leaves by the same door.
+    return { ok: true, real, info: await stat(real) }
   } catch (error) {
     // The entry may exist as a link that resolves nowhere. Confine the nearest
     // existing ancestor first, so a symlinked parent cannot decide where a
@@ -297,7 +313,7 @@ async function loadPolicy(realRoot, name) {
       ? `--policy ${name} resolves outside --root`
       : `--policy ${name} could not be read: ${located.code ?? 'unknown error'}`)
   }
-  const info = await stat(located.real)
+  const info = located.info
   if (!info.isFile()) throw new TypeError(`--policy ${name} is not a regular file`)
   if (info.size > MAX_POLICY_BYTES) throw new TypeError(`--policy ${name} is larger than ${MAX_POLICY_BYTES} bytes`)
   const handle = await open(located.real, 'r')
@@ -321,6 +337,7 @@ async function loadPolicy(realRoot, name) {
     policy: compilePolicy(document),
     digest: createHash('sha256').update(bytes).digest('hex'),
     real: located.real,
+    info,
   }
 }
 
@@ -451,7 +468,7 @@ export async function redactAccessLog(options = {}) {
   }
   if (!(await stat(realRoot)).isDirectory()) throw new TypeError('--root must be a directory')
 
-  const { policy, digest: policyDigest, real: policyReal } = await loadPolicy(realRoot, policyName)
+  const { policy, digest: policyDigest, info: policyInfo } = await loadPolicy(realRoot, policyName)
 
   const clock = options.clock ?? (() => performance.now())
   const started = clock()
@@ -491,14 +508,7 @@ export async function redactAccessLog(options = {}) {
     return buildReport(sink, state, limits, files)
   }
 
-  let info
-  try {
-    info = await stat(located.real)
-  } catch (error) {
-    state.incomplete = true
-    sink.add({ file: logName, ruleId: 'input-unreadable', message: `${logName} could not be inspected: ${error.code ?? 'unknown error'}.` })
-    return buildReport(sink, state, limits, files)
-  }
+  const info = located.info
   if (!info.isFile()) {
     state.incomplete = true
     sink.add({ file: logName, ruleId: 'input-unreadable', message: `${logName} is not a regular file, so nothing was read from it.` })
@@ -517,7 +527,8 @@ export async function redactAccessLog(options = {}) {
 
   let output = null
   if (outName !== null) {
-    const policyInfo = await stat(policyReal)
+    // The policy's identity is the one `locate` established before the file was
+    // read, not a fresh `stat` that could throw out of this function unguarded.
     output = await openOutput(realRoot, outName, options.force === true, [
       { label: `--log ${logName}`, info },
       { label: `--policy ${policyName}`, info: policyInfo },
