@@ -240,22 +240,68 @@ test('a clean run still names a target no record carried, so the claim was not s
   )
 })
 
+/**
+ * Every case states its own outcome, because the guarded version asserted
+ * nothing on one of them.
+ *
+ * This loop used to run its two assertions only `if (report.summary.checked
+ * === 0 || report.status === 'incomplete')`. Three cases entered that block.
+ * The fourth -- a one-record log under `--max-records 1` -- reports `pass` with
+ * `checked: 1`, which is correct and is the boundary the stream guard exists to
+ * get right, so the condition was false and the case asserted nothing at all.
+ * A case that cannot fail is a case that would not notice the boundary moving.
+ */
 test('no path through this tool reports pass without having read a record', async () => {
   const cases = [
-    { inputs: { 'redaction-policy.json': fullPolicy() }, args: [] },
-    { inputs: { 'access.log': '', 'redaction-policy.json': fullPolicy() }, args: [] },
-    { inputs: files([record()]), args: ['--max-input-bytes', '10'] },
-    { inputs: files([record()]), args: ['--max-records', '1'] },
+    {
+      label: 'no log at all',
+      inputs: { 'redaction-policy.json': fullPolicy() },
+      args: [],
+      expect: { status: 'incomplete', code: 2, checked: 0 },
+    },
+    {
+      label: 'a log that holds no records',
+      inputs: { 'access.log': '', 'redaction-policy.json': fullPolicy() },
+      args: [],
+      expect: { status: 'incomplete', code: 2, checked: 0 },
+    },
+    {
+      label: 'a log above maxInputBytes',
+      inputs: files([record()]),
+      args: ['--max-input-bytes', '10'],
+      expect: { status: 'incomplete', code: 2, checked: 0 },
+    },
+    {
+      // Exactly at the bound, not past it: the record budget is asked about
+      // input that still remains, so a log of exactly maxRecords records is a
+      // log that was read to its end. Reporting this one `incomplete` would be
+      // a false claim about a file nothing was missed in.
+      label: 'a log of exactly maxRecords records',
+      inputs: files([record()]),
+      args: ['--max-records', '1'],
+      expect: { status: 'pass', code: 0, checked: 1 },
+    },
   ]
 
-  for (const { inputs, args } of cases) {
+  const outcomes = []
+  for (const { label, inputs, args, expect } of cases) {
     const result = await withRoot(inputs, (root) => cliRun(['--root', root, '--json', ...args]))
     const report = JSON.parse(result.stdout)
-    if (report.summary.checked === 0 || report.status === 'incomplete') {
-      assert.notEqual(report.status, 'pass', `a pass with checked ${report.summary.checked}`)
-      assert.equal(result.code, 2)
-    }
+    outcomes.push(report)
+
+    assert.equal(report.status, expect.status, label)
+    assert.equal(result.code, expect.code, label)
+    assert.equal(report.summary.checked, expect.checked, label)
+
+    // The invariant itself, asserted on every case rather than on the ones a
+    // condition let through.
+    assert.ok(report.status !== 'pass' || report.summary.checked > 0, `${label}: a pass with nothing checked`)
   }
+
+  // And the case set is not degenerate: one shape alone would make the
+  // invariant above hold for a tool that never passes, or never checks.
+  assert.ok(outcomes.some((report) => report.summary.checked === 0), 'no case reaches checked 0')
+  assert.ok(outcomes.some((report) => report.status === 'pass'), 'no case reaches a pass')
 })
 
 test('every place that marks a run incomplete has a case in this file', async () => {
