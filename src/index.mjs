@@ -32,7 +32,7 @@ import { open, realpath, stat } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path'
 import { performance } from 'node:perf_hooks'
 
-import { ALL_DETECTORS, detectorsMatching, redactDetected } from './detectors.mjs'
+import { detectorsMatching, redactDetected, reportText } from './detectors.mjs'
 import { POLICY_SCHEMA_VERSION, compilePolicy } from './policy.mjs'
 import { RecordRefused, redactRecord } from './redact.mjs'
 import {
@@ -199,19 +199,6 @@ function validateName(name, flag) {
     throw new TypeError(`${flag} must not step outside --root with ".."`)
   }
   return name
-}
-
-/**
- * Every string this package emits passes through here.
- *
- * It runs the *whole* detector catalog -- not the subset the policy enabled --
- * and then flattens and bounds the result. Report strings include pointers
- * built from keys the record supplied, and a record key can be an email address
- * as easily as a field value can; a report that leaks through its own location
- * field would defeat the tool as thoroughly as an unredacted output line.
- */
-export function reportText(value, limit = MESSAGE_LIMIT) {
-  return excerpt(redactDetected(String(value), ALL_DETECTORS, '[redacted]').text, limit)
 }
 
 /** Build a finding, taking its severity from the one table. */
@@ -1013,7 +1000,7 @@ export function formatReport(report) {
   return `${lines.join('\n')}\n`
 }
 
-export { DETECTOR_NAMES, detectorsMatching, luhn, redactDetected } from './detectors.mjs'
+export { DETECTOR_NAMES, detectorsMatching, luhn, redactDetected, reportText } from './detectors.mjs'
 export { maskAddress, maskAddressField, maskIpv4, maskIpv6, parseIpv4, parseIpv6 } from './address.mjs'
 export { DEFAULT_PLACEHOLDER, POLICY_KEYS, POLICY_SCHEMA_VERSION, compilePolicy } from './policy.mjs'
 export { RecordRefused, escapePointer, redactRecord } from './redact.mjs'

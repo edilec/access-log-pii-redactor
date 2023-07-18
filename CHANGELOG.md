@@ -48,6 +48,12 @@ here.
 
 ### Security
 
+- Every string this package prints goes through the whole detector catalog, not
+  the subset a policy enabled -- report messages, pointers, file names, and the
+  diagnostic that refuses a policy. A policy entry used to be quoted back to
+  stderr verbatim, so a credential pasted into `redactFields` was echoed by the
+  very error that rejected it; flattening control characters and bounding the
+  length, which is all that path did before, touches shape and never content.
 - No network access of any kind: no socket is opened and no service named in a
   log is contacted. Proved by a module-resolution guard that refuses every
   network builtin, and by a live loopback listener planted in a record that

@@ -19,7 +19,7 @@
  *   `pass`, which is the vacuous pass this catalog has been bitten by before.
  */
 
-import { DETECTOR_NAMES, detectorsMatching, isDetectorName } from './detectors.mjs'
+import { DETECTOR_NAMES, detectorsMatching, isDetectorName, reportText } from './detectors.mjs'
 import { byCodeUnit, excerpt, hasForbiddenCharacter, isPlainObject } from './text.mjs'
 
 export const POLICY_SCHEMA_VERSION = '1'
@@ -64,8 +64,20 @@ const HEADER_NAME = /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,64}$/
 const QUERY_NAME = /^[A-Za-z0-9._~%[\]+-]{1,64}$/
 const PLACEHOLDER_SHAPE = /^[ -~]{1,64}$/
 
+/**
+ * Refuse the policy, without reproducing anything in it that is an identifier.
+ *
+ * These messages quote the entry they rejected, which is what makes a typo
+ * fixable -- `queryParam` for `queryParams` is worth reading back. But the
+ * entry is a string from a file this package did not write, and an operator who
+ * pastes a credential into `redactFields` had it echoed verbatim to stderr by
+ * the very diagnostic that refused it. `excerpt` never stopped that: it
+ * flattens control characters and bounds the length, and neither touches
+ * content. So a policy diagnostic goes through the same door every report
+ * string does -- the whole detector catalog, then flatten and bound.
+ */
 function fail(message) {
-  throw new TypeError(excerpt(message, 300))
+  throw new TypeError(reportText(message, 300))
 }
 
 function requireArrayOfStrings(value, key) {

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { DEFAULT_PLACEHOLDER, POLICY_KEYS, POLICY_SCHEMA_VERSION, compilePolicy } from '../src/index.mjs'
-import { CANARIES, cliReport, files, policy, record } from './support.mjs'
+import { CANARIES, cliReport, files, policy, record, substringsOf } from './support.mjs'
 
 const minimal = (extra = {}) => ({ schemaVersion: POLICY_SCHEMA_VERSION, redactFields: ['user.email'], ...extra })
 
@@ -126,4 +126,48 @@ test('the parser message for a malformed policy is not read either', async () =>
 
   assert.equal(result.stderr.toLowerCase().includes('unexpected token'), false)
   assert.equal(result.stderr.includes('secretish'), false)
+})
+
+/**
+ * A policy diagnostic quotes the entry it refused, and an operator's policy is
+ * a file this package did not write.
+ *
+ * Quoting the entry is what makes a typo fixable, so it is kept -- but it used
+ * to be quoted verbatim. `excerpt` flattens control characters and bounds the
+ * length; neither touches content, so a credential pasted into `redactFields`
+ * reached stderr in full, on the one path that reads a policy string back to a
+ * terminal. The diagnostic now goes through `reportText`, which is the same
+ * door every report string uses: the whole detector catalog, then flatten and
+ * bound.
+ */
+const refusedPolicies = [
+  ['a field path', { redactFields: [`${CANARIES.email} ${CANARIES.awsKey}`] }, CANARIES.awsKey],
+  ['a header name', { headerFields: ['a'], headers: [CANARIES.bearer] }, CANARIES.bearer],
+  ['a query parameter', { urlFields: ['a'], queryParams: [`${CANARIES.card} not!a!name`] }, CANARIES.card],
+  ['a detector name', { detectors: [CANARIES.jwt] }, CANARIES.jwt],
+  ['a URL field path', { urlFields: [`${CANARIES.email}/x`] }, CANARIES.email],
+]
+
+for (const [label, document, canary] of refusedPolicies) {
+  test(`a policy refused for ${label} does not read the entry back`, async () => {
+    const result = await cliReport({ 'access.log': 'x\n', 'redaction-policy.json': policy(document) })
+
+    assert.equal(result.code, 2)
+    assert.equal(result.stdout, '', 'a configuration error produces no report')
+    assert.ok(result.stderr.trim().length > 0, 'the run must still say what was wrong')
+    for (const part of substringsOf(canary, 8)) {
+      assert.equal(result.stderr.includes(part), false, `the policy diagnostic leaked "${part}"`)
+    }
+    assert.ok(result.stderr.includes('[redacted]'), 'the entry was not quoted at all, so this case pins nothing')
+  })
+}
+
+test('a policy refused for a plain typo still reads the entry back, because that is the point', async () => {
+  // The other half of the fix: redacting identifiers must not cost the
+  // diagnostic its usefulness. `queryParam` is not a credential and survives.
+  const result = await cliReport({ 'access.log': 'x\n', 'redaction-policy.json': { schemaVersion: '1', queryParam: ['token'] } })
+
+  assert.equal(result.code, 2)
+  assert.ok(result.stderr.includes('queryParam'), 'the misspelled key was not named')
+  assert.equal(result.stderr.includes('[redacted]'), false, 'an ordinary typo was redacted')
 })

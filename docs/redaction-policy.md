@@ -5,6 +5,12 @@ The policy is a JSON document that says what to remove and from where. It is
 an empty stdout, and no report is produced. A run whose rules could not be read
 never had a subject to report about.
 
+The diagnostic quotes the entry it refused, because a typo is only fixable if
+you can see it -- but the entry is a string from a file this tool did not write,
+so it passes through the whole detector catalog first, exactly as every report
+string does. A credential pasted into a policy list comes back as `[redacted]`;
+`queryParam` for `queryParams` comes back as `queryParam`.
+
 ```json
 {
   "schemaVersion": "1",

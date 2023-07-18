@@ -31,6 +31,8 @@
  * `README.md` says so in its own words.
  */
 
+import { EXCERPT_LIMIT, excerpt } from './text.mjs'
+
 /** Detector names, ordered by code unit. This is the whole vocabulary. */
 export const DETECTOR_NAMES = Object.freeze([
   'aws-access-key-id',
@@ -252,3 +254,22 @@ export function redactDetected(text, enabled, placeholder) {
 
 /** Every detector, as a set. Used for strings this package itself emits. */
 export const ALL_DETECTORS = Object.freeze(new Set(DETECTOR_NAMES))
+
+/**
+ * Every string this package emits passes through here.
+ *
+ * It runs the *whole* detector catalog -- not the subset the policy enabled --
+ * and then flattens and bounds the result. Report strings include pointers
+ * built from keys the record supplied, and a record key can be an email address
+ * as easily as a field value can; a report that leaks through its own location
+ * field would defeat the tool as thoroughly as an unredacted output line.
+ *
+ * It lives beside the catalog rather than beside its first caller because it is
+ * not only the report that quotes untrusted text back. A policy diagnostic
+ * quotes the operator's own entry, and had it written its own bounded-excerpt
+ * line instead of calling this one, it would have quoted a credential pasted
+ * into a policy straight onto stderr -- which is exactly what it did.
+ */
+export function reportText(value, limit = EXCERPT_LIMIT) {
+  return excerpt(redactDetected(String(value), ALL_DETECTORS, '[redacted]').text, limit)
+}
