@@ -64,3 +64,24 @@ test('a finding takes its severity from the table and nowhere else', () => {
     assert.equal(createFinding({ ruleId, message: 'x', file: 'a' }).severity, severity)
   }
 })
+
+test('the counts written in prose match the table they describe', async () => {
+  // The comment above RULE_SEVERITY said "sixteen error rules" while the table
+  // held fifteen, and the rule documentation's proof section counts them too.
+  // A number in prose that nothing checks drifts the moment a rule is added.
+  const errorRules = Object.values(RULE_SEVERITY).filter((severity) => severity === 'error').length
+  const ruleCount = Object.keys(RULE_SEVERITY).length
+  const source = await readFile(join(projectDirectory, 'src/index.mjs'), 'utf8')
+  const rules = await readFile(join(projectDirectory, 'docs/redaction-rules.md'), 'utf8')
+
+  assert.ok(source.includes(`${errorRules} error rules`),
+    `src/index.mjs does not say "${errorRules} error rules"; the table holds that many`)
+  assert.ok(rules.includes(`Each of the ${errorRules} error rules`),
+    `docs/redaction-rules.md does not count ${errorRules} error rules`)
+  assert.ok(rules.includes(`the ${ruleCount} rule ids`),
+    `docs/redaction-rules.md does not count ${ruleCount} rule ids`)
+
+  // And the numbers are not all the same, so a single wrong count could not
+  // satisfy every assertion above.
+  assert.notEqual(errorRules, ruleCount)
+})

@@ -90,8 +90,11 @@ export const HARD_LIMITS = Object.freeze({
  *
  * Severity is the whole difference between a run that fails and one that
  * passes. Written as a literal at each construction site it drifts silently,
- * and demoting any of the sixteen error rules below turns "a record was
- * withheld because it could not be redacted" into a green build.
+ * and demoting any of the 15 error rules below turns "a record was withheld
+ * because it could not be redacted" into a green build. That count is written
+ * as a numeral and asserted against the table in `test/severity-table.test.mjs`
+ * -- it said "sixteen" while the table held fifteen, and the number here is
+ * what tells a maintainer how much ground the severity guard has to cover.
  *
  * `test/severity-table.test.mjs` asserts this table against the documented
  * catalog in both directions. That is worth having and it is not the test: a
