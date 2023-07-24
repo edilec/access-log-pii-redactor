@@ -88,6 +88,22 @@ test('the time budget takes its milliseconds from an injected clock', async () =
   assert.equal(finding.message.includes('maxRuntimeMs budget of 60'), true)
 })
 
+test('with no clock injected the run still completes, and reads no time of day', async () => {
+  // The README used to say the budget "takes its milliseconds from an injected
+  // clock", which is a claim about every run. It is injectABLE: with nothing
+  // supplied it reads performance.now(), a monotonic counter. What the two
+  // spellings share is the part that matters -- two runs with no clock at all
+  // produce identical bytes, because no value the budget reads is written
+  // anywhere.
+  const inputs = files([record(), record(), record()])
+  const first = await apiReport(inputs)
+  const second = await apiReport(inputs)
+
+  assert.equal(first.status, 'pass')
+  assert.equal(first.summary.records, 3)
+  assert.equal(JSON.stringify(first), JSON.stringify(second), 'two unclocked runs disagreed')
+})
+
 test('a clock that never advances lets the whole log through', async () => {
   const report = await apiReport(files([record(), record(), record()]), {
     clock: () => 0,

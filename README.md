@@ -162,8 +162,13 @@ statement about what is left.
 Two runs over the same log and policy produce byte-identical stdout and a
 byte-identical output file. Every ordering is by UTF-16 code unit; neither
 `localeCompare` nor `Intl.Collator` appears in `src/`, and `Date.now`,
-`new Date` and `Math.random` do not either. The time budget takes its
-milliseconds from an injected clock.
+`new Date` and `Math.random` do not either.
+
+The time budget is the one thing that reads a clock, and it reads a millisecond
+source a caller **may** inject; with none supplied it is `performance.now()`, a
+monotonic counter rather than the time of day. Nothing it returns is written
+into a report or an output file, so the budget can change only whether a run
+stopped early -- never what it wrote before it did.
 
 The report carries a SHA-256 of the policy that produced it and a SHA-256 of the
 redacted stream, so a consumer can say which rules produced which file.

@@ -102,9 +102,12 @@ is relative to that line.
 
 ## The time budget
 
-The budget is checked after each record, against a millisecond source that is
-injected rather than read from a wall clock. Nothing in this package calls
-`Date.now`, `new Date` or `Math.random`.
+The budget is checked after each record, against a millisecond source a caller
+may inject as `options.clock`; with none supplied it is `performance.now()`, a
+monotonic counter rather than the time of day. Nothing in this package calls
+`Date.now`, `new Date` or `Math.random`, and no value the clock returns is
+written into a report or an output file: the budget decides whether a run
+stopped early and nothing else.
 
 A regular expression cannot be bounded by a clock -- the engine does not yield,
 so a check around the call cannot fire while the call is running. That is why a
