@@ -29,12 +29,13 @@
 
 import { createHash } from 'node:crypto'
 import { open, realpath, stat } from 'node:fs/promises'
-import { basename, dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path'
+import { dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path'
 import { performance } from 'node:perf_hooks'
 
 import { detectorsMatching, redactDetected, reportText } from './detectors.mjs'
 import { POLICY_SCHEMA_VERSION, compilePolicy } from './policy.mjs'
 import { RecordRefused, redactRecord } from './redact.mjs'
+import { DestinationError, assertWritableDestination } from './write-guard.mjs'
 import {
   byCodeUnit,
   decodeUtf8,
@@ -332,43 +333,30 @@ async function loadPolicy(realRoot, name) {
 }
 
 /**
- * Open the destination, refusing to write over anything this run reads.
+ * Open the destination, refusing to write anywhere but the file that was named.
  *
- * `realpath` alone is not enough here. A hard link has no target: two names for
- * one inode resolve to two different real paths, so a path comparison passes
- * and the run overwrites its own input. The device and inode numbers are the
- * identity that survives that, which is what is compared.
+ * `assertWritableDestination` carries the reasoning for all three holes -- a
+ * symbolic link at the destination, a symlinked parent, and a hard link to an
+ * input -- and none of them catches the other two. Every one of its refusals is
+ * a configuration error, so it throws out to the CLI, which exits 2 with an
+ * empty stdout rather than reporting on a destination the run never had.
+ *
+ * What is left here is this tool's own rule: an existing file is replaced only
+ * when the caller asked for that. The guard has already established that the
+ * thing at the destination is a regular file and not an input.
  */
 async function openOutput(realRoot, name, force, inputs, sink) {
-  const target = resolve(realRoot, name)
-  let realParent
-  try {
-    realParent = await realpath(dirname(target))
-  } catch (error) {
-    throw new TypeError(`--out ${name}: its directory could not be resolved: ${error.code ?? 'unknown error'}`)
-  }
-  if (!isInside(realRoot, realParent)) throw new TypeError(`--out ${name} resolves outside --root`)
-  const final = join(realParent, basename(target))
-
-  let existing = null
-  try {
-    existing = await stat(final)
-  } catch {
-    existing = null
-  }
-  if (existing !== null) {
-    for (const input of inputs) {
-      if (existing.dev === input.info.dev && existing.ino === input.info.ino) {
-        throw new TypeError(`--out ${name} is the same file as ${input.label}; this run would destroy its own input`)
-      }
-    }
-    if (existing.isFile() && !force) {
-      throw new TypeError(`--out ${name} already exists; pass --force to replace it`)
-    }
+  const { target, existing } = await assertWritableDestination(resolve(realRoot, name), {
+    inputs,
+    root: realRoot,
+    label: `--out ${name}`,
+  })
+  if (existing !== null && !force) {
+    throw new DestinationError(`--out ${name} already exists; pass --force to replace it`)
   }
 
   try {
-    return { handle: await open(final, force ? 'w' : 'wx'), file: name }
+    return { handle: await open(target, force ? 'w' : 'wx'), file: name }
   } catch (error) {
     sink.add({
       file: name,
@@ -1007,6 +995,7 @@ export { DETECTOR_NAMES, detectorsMatching, luhn, redactDetected, reportText } f
 export { maskAddress, maskAddressField, maskIpv4, maskIpv6, parseIpv4, parseIpv6 } from './address.mjs'
 export { DEFAULT_PLACEHOLDER, POLICY_KEYS, POLICY_SCHEMA_VERSION, compilePolicy } from './policy.mjs'
 export { RecordRefused, escapePointer, redactRecord } from './redact.mjs'
+export { DestinationError, assertWritableDestination } from './write-guard.mjs'
 export {
   LINE_SHAPES, byCodeUnit, decodeUtf8, describeJsonType, escapeOutputUnsafe, excerpt,
   hasForbiddenCharacter, isPlainObject, shapeOfLine,

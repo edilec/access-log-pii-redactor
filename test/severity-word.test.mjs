@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
@@ -139,15 +139,18 @@ test('no-records-processed prints ERROR and counts one error', async () => {
 test('output-unwritable prints ERROR and counts one error', async () => {
   const { code, report, stderr } = await audit(
     { 'access.log': lines([GOOD]), 'redaction-policy.json': KEEP },
-    ['--out', 'occupied', '--force'],
-    (root) => mkdir(join(root, 'occupied')),
+    ['--out', 'locked/redacted.log', '--force'],
+    async (root) => {
+      await mkdir(join(root, 'locked'))
+      await chmod(join(root, 'locked'), 0o555)
+    },
   )
 
   assert.equal(report.summary.errors, 1)
   assert.equal(report.summary.warnings, 0)
   assert.equal(report.status, 'incomplete')
   assert.equal(code, 2)
-  assert.equal(stderr.includes('ERROR   occupied:0 output-unwritable'), true)
+  assert.equal(stderr.includes('ERROR   locked/redacted.log:0 output-unwritable'), true)
 })
 
 test('path-escapes-root prints ERROR and counts one error', async () => {

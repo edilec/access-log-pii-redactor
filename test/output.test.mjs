@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { link, mkdir, readFile, readdir, stat, symlink, writeFile } from 'node:fs/promises'
+import { chmod, link, mkdir, readFile, readdir, stat, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import test from 'node:test'
 
@@ -99,17 +99,38 @@ test('a destination that is the log or the policy under its own name is refused'
   })
 })
 
-test('a destination that cannot be opened is reported, and nothing is read', async () => {
+test('a destination that is a directory is a configuration error, with no report', async () => {
   await withRoot(files([record(), record()]), async (root) => {
     await mkdir(join(root, 'occupied'))
     const result = await cliRun(['--root', root, '--out', 'occupied', '--force', '--json'])
+
+    assert.equal(result.code, 2)
+    assert.equal(result.stdout, '', 'the run never had a usable destination, so there is nothing to report about one')
+    assert.equal(result.stderr.includes('not a regular file'), true)
+  })
+})
+
+/**
+ * The one route left to `output-unwritable`.
+ *
+ * Every destination that is *unsafe* -- a symlink, a parent that leaves the
+ * root, a hard link to an input, a directory -- is refused as a configuration
+ * error before anything is opened. What reaches this rule is a destination that
+ * passed every check, was exactly the file it named, and could not be written
+ * anyway.
+ */
+test('a destination that cannot be opened is reported, and nothing is read', async () => {
+  await withRoot(files([record(), record()]), async (root) => {
+    await mkdir(join(root, 'locked'))
+    await chmod(join(root, 'locked'), 0o555)
+    const result = await cliRun(['--root', root, '--out', 'locked/redacted.log', '--force', '--json'])
     const report = JSON.parse(result.stdout)
 
     assert.equal(result.code, 2)
     assert.equal(report.status, 'incomplete')
     assert.equal(report.summary.records, 0)
     assert.equal(findingsFor(report, 'output-unwritable').length, 1)
-    assert.equal(findingsFor(report, 'output-unwritable')[0].location.file, 'occupied')
+    assert.equal(findingsFor(report, 'output-unwritable')[0].location.file, 'locked/redacted.log')
   })
 })
 

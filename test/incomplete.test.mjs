@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -84,7 +84,8 @@ test('a log above the byte bound is incomplete', async () => {
 test('a destination that could not be opened is incomplete', async () => {
   await withRoot(files([record()]), async (root) => {
     await mkdir(join(root, 'blocked'))
-    const result = await cliRun(['--root', root, '--out', 'blocked', '--force', '--json'])
+    await chmod(join(root, 'blocked'), 0o555)
+    const result = await cliRun(['--root', root, '--out', 'blocked/redacted.log', '--force', '--json'])
 
     assert.equal(JSON.parse(result.stdout).status, 'incomplete')
     assert.equal(result.code, 2)
