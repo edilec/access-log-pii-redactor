@@ -42,6 +42,12 @@ Options:
   --out NAME                 Destination for the redacted log, relative to
                              --root. Omitted, the run is a dry run: every record
                              is redacted and checked and nothing is written.
+                             Refused, as a configuration error, when it is a
+                             symbolic link (following the link is the dangerous
+                             act, so it is refused unresolved), when it resolves
+                             outside --root through a symlinked parent, when it
+                             is the same file as an input by device and inode,
+                             or when it is not a regular file
   --force                    Replace an existing --out file
   --json                     Suppress the human summary on stderr
   --max-records N            Maximum records read (default 100000)

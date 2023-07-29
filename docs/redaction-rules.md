@@ -45,7 +45,7 @@ is a remainder about which nothing at all is known, and that is what
 | `input-too-large` | error | The log is larger than `maxInputBytes`. It was not read. |
 | `input-unreadable` | error | The log could not be resolved, inspected or read, or is not a regular file. |
 | `no-records-processed` | error | The log was read to the end and held no records. A `pass` here would be green on no evidence. |
-| `output-unwritable` | error | The destination could not be opened. No record was read. |
+| `output-unwritable` | error | The destination passed every safety check and could not be opened anyway — a directory this process may not write into, a full disk. No record was read. A destination that is *unsafe* rather than merely unwritable — a symbolic link, a parent that leaves `--root`, a hard link to an input, anything that is not a regular file — never reaches this rule: it is a configuration error, with an empty stdout and no report. |
 | `path-escapes-root` | error | The log resolves outside `--root`, so it was refused unread. |
 | `policy-target-never-seen` | warning | The policy names a field, header or parameter that no record carried, so nothing was redacted on its account. Emitted only by a run that read the whole log and quarantined nothing: a record it did not look inside is not evidence that the target is absent. |
 | `record-not-json` | error | A line did not parse. It was quarantined by line number, byte count and shape; no parser message is read and no content is reported. |

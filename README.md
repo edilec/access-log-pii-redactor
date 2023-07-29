@@ -116,11 +116,24 @@ Everything that can go wrong inside a record redacts *more*, never less:
   identifier used as a field name, most often -- is quarantined rather than
   patched, because rewriting a key would change the shape of somebody's log.
 
-The destination is checked before anything is written: it is confined to the
-root, it is not replaced without `--force`, and it is refused outright if it is
-the same file as an input. That last check compares device and inode numbers
-rather than paths, because a hard link is a second name for one file and a path
-comparison cannot see it.
+The destination is checked before anything is opened, and a destination that
+would write somewhere else is refused as a **configuration error**: exit `2`,
+empty stdout, nothing written. Three refusals, none of which catches the other
+two:
+
+- it is a **symbolic link**. `realpath` and `stat` both *follow* the link, and
+  following it is the dangerous act, so `lstat` refuses it unresolved —
+  including a link whose target does not exist yet, which would otherwise create
+  a new file outside the root;
+- it resolves **outside `--root`**. A lexical prefix check passes for
+  `root/link/out` where `link` leaves the root, so the parent is resolved with
+  `realpath` and then compared;
+- it is **the same file as an input**. That check compares device and inode
+  numbers rather than paths, because a hard link is a second name for one file
+  and a path comparison cannot see it.
+
+An existing regular file at the destination is still not replaced without
+`--force`.
 
 ## Limits and non-goals
 

@@ -46,6 +46,29 @@ here.
 - Examples for a clean and a deliberately broken log, both asserted by the test
   suite.
 
+### Fixed
+
+- **Data loss.** `--out` accepted a symbolic link at the destination. `stat`
+  follows a link, so a link pointing at a file in another tree looked like an
+  ordinary existing file that `--force` was allowed to replace, and the redacted
+  log was written through it. Reproduced before the fix: a file outside the root
+  holding `PRECIOUS-REDACTOR` was replaced by the redacted log and the run
+  exited `0` with an empty stderr; with the link pointing at a path that did not
+  exist yet, the run created that file outside the root instead. Both now exit
+  `2` with an empty stdout and leave the tree outside the root untouched. This
+  tool had already closed the other two holes -- it resolved the parent against
+  the root, and it compared device and inode against its inputs -- which is
+  exactly the shape of every tool in this catalog that lost a file.
+  `test/destination-guard.test.mjs` drives the real binary through one case per
+  hole plus five destinations that must still be **written**, because a guard
+  that refuses everything passes every data-loss case while making the tool
+  useless. Each of the three checks was removed in turn and the failures
+  watched.
+- A destination that is a directory is a configuration error now rather than an
+  `output-unwritable` finding, so it has an empty stdout like every other bad
+  usage. `output-unwritable` is what remains for a destination that passed every
+  check and could not be opened anyway.
+
 ### Security
 
 - Every string this package prints goes through the whole detector catalog, not
@@ -58,10 +81,15 @@ here.
   log is contacted. Proved by a module-resolution guard that refuses every
   network builtin, and by a live loopback listener planted in a record that
   records that nothing knocked.
-- The input is opened read-only. The destination is confined to the declared
-  root, is not replaced without `--force`, and is refused when it is the same
-  file as an input -- compared by device and inode, because a hard link is a
-  second name for one file and a path comparison cannot see it.
+- The input is opened read-only. The destination is checked before anything is
+  opened, for all three ways a named path is not the file it names: a symbolic
+  link at the destination, refused unresolved by `lstat` because `realpath` and
+  `stat` both follow it and following it is the dangerous act; a parent that
+  leaves the declared root, caught by resolving the parent rather than comparing
+  strings; and a hard link to an input, caught on device and inode because a
+  hard link is a second name for one file and a path comparison cannot see it.
+  A refused destination is a configuration error: exit 2, empty stdout, nothing
+  written. An existing regular file is still not replaced without `--force`.
 - Path confinement resolves the real path of both the root and each input, so a
   symlink planted inside the root is refused while a legitimate file under a
   symlinked root is not.
