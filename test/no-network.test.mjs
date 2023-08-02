@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { createServer } from 'node:http'
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -8,7 +7,7 @@ import { pathToFileURL } from 'node:url'
 import test from 'node:test'
 import { promisify } from 'node:util'
 
-import { CLI, apiReport, files, fullPolicy, logOf, projectDirectory, record, withRoot } from './support.mjs'
+import { CLI, files, projectDirectory, record, withRoot } from './support.mjs'
 
 const execFileAsync = promisify(execFile)
 
@@ -25,9 +24,9 @@ const execFileAsync = promisify(execFile)
  *    socket, the import would fail and the run would not produce a report. A
  *    control run proves the hook actually fires, because a guard that never
  *    fires proves nothing.
- * 2. A live loopback listener whose address is planted in the log, which then
- *    records that nothing ever knocked. Log content is data: a URL in a record
- *    is not an instruction to fetch it.
+ * 2. A loopback-looking URL planted in the log, while network imports, fetch
+ *    and socket connect are actively denied without opening a test socket.
+ *    Log content is data: a URL in a record is not an instruction to fetch it.
  * 3. A scan of the shipped source for the globals and spellings a hook cannot
  *    see -- `fetch`, `eval`, a child process that would open a socket on this
  *    package's behalf, and the non-deterministic sources this package also
@@ -48,7 +47,11 @@ export async function resolve(specifier, context, next) {
 `
 
 const GUARD_SOURCE = `
+import { Socket } from 'node:net'
 import { register } from 'node:module'
+Socket.prototype.connect = function () { throw new Error('BLOCKED_NETWORK_CONNECT') }
+globalThis.__socketPrototype = Socket.prototype
+globalThis.fetch = async () => { throw new Error('BLOCKED_NETWORK_FETCH') }
 register('./hook.mjs', import.meta.url)
 `
 
@@ -57,12 +60,29 @@ import net from 'node:net'
 process.stdout.write(typeof net)
 `
 
+const DENIAL_PROBE_SOURCE = `
+try {
+  await fetch('data:text/plain,probe')
+  throw new Error('fetch guard absent')
+} catch (error) {
+  if (error.message !== 'BLOCKED_NETWORK_FETCH') throw error
+}
+try {
+  globalThis.__socketPrototype.connect.call(null)
+  throw new Error('connect guard absent')
+} catch (error) {
+  if (error.message !== 'BLOCKED_NETWORK_CONNECT') throw error
+}
+process.stdout.write('guards active')
+`
+
 async function withGuard(body) {
   const directory = await mkdtemp(join(tmpdir(), 'access-log-pii-redactor-guard-'))
   try {
     await writeFile(join(directory, 'hook.mjs'), HOOK_SOURCE)
     await writeFile(join(directory, 'guard.mjs'), GUARD_SOURCE)
     await writeFile(join(directory, 'probe.mjs'), PROBE_SOURCE)
+    await writeFile(join(directory, 'denial-probe.mjs'), DENIAL_PROBE_SOURCE)
     return await body({ directory, guard: pathToFileURL(join(directory, 'guard.mjs')).href })
   } finally {
     await rm(directory, { recursive: true, force: true })
@@ -77,6 +97,10 @@ test('the binary completes a real run with every network builtin refused at reso
       () => execFileAsync(process.execPath, ['--import', guard, join(directory, 'probe.mjs')]),
       /BLOCKED_NETWORK_IMPORT:node:net/,
     )
+    const { stdout: denialEvidence } = await execFileAsync(process.execPath, [
+      '--import', guard, join(directory, 'denial-probe.mjs'),
+    ])
+    assert.equal(denialEvidence, 'guards active')
 
     const { stdout } = await withRoot(files([record(), record()]), (root) =>
       execFileAsync(process.execPath, ['--import', guard, CLI, '--root', root, '--out', 'redacted.log', '--json']))
@@ -85,27 +109,19 @@ test('the binary completes a real run with every network builtin refused at reso
   })
 })
 
-test('a URL in a record is data: the listener it names is never contacted', async () => {
-  const knocks = []
-  const server = createServer((request, response) => {
-    knocks.push(request.url)
-    response.end('no')
-  })
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
-  const { port } = server.address()
-
-  try {
+test('a URL in a record is inert data under the denied-network runtime', async () => {
+  await withGuard(async ({ guard }) => {
+    const address = 'http://127.0.0.1:9'
     const planted = [
-      record({ request: { url: `http://127.0.0.1:${port}/v1/search?token=t-1`, headers: { authorization: 'Bearer abcdefghijklmnop' } } }),
-      record({ note: `see http://127.0.0.1:${port}/callback for details` }),
+      record({ request: { url: `${address}/v1/search?token=t-1`, headers: { authorization: 'Bearer synthetic-token' } } }),
+      record({ note: `see ${address}/callback for details` }),
     ]
-    const report = await apiReport({ 'access.log': logOf(planted), 'redaction-policy.json': fullPolicy() })
-
+    const { stdout } = await withRoot(files(planted), (root) =>
+      execFileAsync(process.execPath, ['--import', guard, CLI, '--root', root, '--out', 'redacted.log', '--json']))
+    const report = JSON.parse(stdout)
     assert.equal(report.summary.written, 2)
-    assert.deepEqual(knocks, [], 'a URL in a log is a string, not an instruction')
-  } finally {
-    await new Promise((resolve) => server.close(resolve))
-  }
+    assert.equal(report.status, 'pass')
+  })
 })
 
 test('the shipped source reaches for nothing a resolution hook cannot see', async () => {

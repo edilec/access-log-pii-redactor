@@ -164,8 +164,9 @@ statement about what is left.
   If you need to correlate sessions after redaction, this is not that tool.
 - **It does not act on any system.** It reads two files, writes one, and opens
   no socket. It discovers nothing, tests no credential, and contacts no service
-  named in a log -- `test/no-network.test.mjs` plants a live listener in a
-  record and proves nothing knocks.
+  named in a log. The offline test uses an inert loopback-looking URL while a
+  preload guard denies network imports, fetch and socket connect; the test
+  suite itself opens no listener.
 - **The report is evidence about one file at one moment.** It says nothing about
   the exporter that produced the log, about what the log's upstream retained, or
   about copies of the log that already exist.
